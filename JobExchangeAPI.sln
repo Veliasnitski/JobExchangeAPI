@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.4.33205.214
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JobExchangeAPI", "JobExchangeAPI\JobExchangeAPI.csproj", "{080D015B-AE50-499D-8D02-E3D68FEB75D1}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9CF809EE-9217-40F4-95DD-A1E25B4B9246} = {9CF809EE-9217-40F4-95DD-A1E25B4B9246}
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Data", "Data\Data.csproj", "{9CF809EE-9217-40F4-95DD-A1E25B4B9246}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{080D015B-AE50-499D-8D02-E3D68FEB75D1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{080D015B-AE50-499D-8D02-E3D68FEB75D1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{080D015B-AE50-499D-8D02-E3D68FEB75D1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{080D015B-AE50-499D-8D02-E3D68FEB75D1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9CF809EE-9217-40F4-95DD-A1E25B4B9246}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CF809EE-9217-40F4-95DD-A1E25B4B9246}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CF809EE-9217-40F4-95DD-A1E25B4B9246}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CF809EE-9217-40F4-95DD-A1E25B4B9246}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {FF0D38FD-6AFA-405A-94AC-F0AF5E0BD53D}
+	EndGlobalSection
+EndGlobal
