@@ -3,6 +3,7 @@ using Data.Models;
 using JobExchangeAPI.Helpers;
 using JobExchangeAPI.Models.RequestModels;
 using JobExchangeAPI.Utils;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -53,14 +54,26 @@ namespace JobExchangeAPI.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<IActionResult> RegisterUser([FromBody] User user)
+        public async Task<IActionResult> RegisterUser([FromBody] SignUp signUp)
         {
-            if (user == null)
+            if (signUp == null)
                 return BadRequest();
+
+            var user = new User
+            {
+                Username = signUp.Username,
+                Password = signUp.Password,
+                FirstName= signUp.FirstName,
+                LastName= signUp.LastName,
+                Role = UserRole.User,
+                Email = signUp.Email,
+                Token = signUp.Token
+            };
             if (await CheckUserNameExistAsync(user.Username))
                 return BadRequest(new { Message = "Username already exist!" });
             if (!string.IsNullOrEmpty(user.Email) && await CheckEmailExistAsync(user.Email))
                 return BadRequest(new { Message = "Email already exist!" });
+
             var pass = CheckPasswordExistAsync(user.Password);
             if (!string.IsNullOrEmpty(pass))
                 return BadRequest(new { Message = pass });
@@ -68,7 +81,6 @@ namespace JobExchangeAPI.Controllers
             try
             {
                 user.Password = PasswordHasher.HashPassword(user.Password);
-                user.Role = UserRole.User;
                 // TODO: token
                 user.Token = "";
                 await _jobExchangeDBContext.Users.AddAsync(user);
@@ -81,6 +93,8 @@ namespace JobExchangeAPI.Controllers
                 return BadRequest(new { Message = ex.Message });
             }
         }
+
+        #region other
 
         private Task<bool> CheckUserNameExistAsync(string username) => _jobExchangeDBContext.Users.AnyAsync(x => x.Username == username);
         private Task<bool> CheckEmailExistAsync(string email) => _jobExchangeDBContext.Users.AnyAsync(x => x.Email == email);
@@ -116,6 +130,15 @@ namespace JobExchangeAPI.Controllers
             var token = jwtTokenHandler.CreateToken(tokenDescriptor);
 
             return jwtTokenHandler.WriteToken(token);
+        }
+
+        #endregion
+
+        [Authorize]
+        [HttpGet]
+        public async Task<ActionResult<User>> GetAllUsers()
+        {
+            return Ok(await _jobExchangeDBContext.Users.ToListAsync());
         }
     }
 }
