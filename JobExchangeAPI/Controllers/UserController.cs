@@ -1,6 +1,7 @@
 ﻿using Data;
 using Data.Models;
 using JobExchangeAPI.Helpers;
+using JobExchangeAPI.Models.DTO;
 using JobExchangeAPI.Models.RequestModels;
 using JobExchangeAPI.Utils;
 using Microsoft.AspNetCore.Authorization;
@@ -10,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -31,7 +33,6 @@ namespace JobExchangeAPI.Controllers
             if (user == null)
                 return BadRequest();
 
-            //TODO: add hash to password
             try
             {
                 var curUser = await _jobExchangeDBContext.Users
@@ -44,8 +45,13 @@ namespace JobExchangeAPI.Controllers
                     return BadRequest(new { Message = "Password is incorrect!" });
 
                 curUser.Token = CreateJWT(curUser);
+                var newAccessToken = curUser.Token;
+                var newRefreshToken = CreateRefreshToken();
+                curUser.RefreshToken = newRefreshToken;
+                curUser.RefreshTokenExpiryTime = DateTime.UtcNow.AddHours(1);
+                await _jobExchangeDBContext.SaveChangesAsync();
 
-                return Ok(new { Token = curUser.Token, Message = "Login Success!" });
+                return Ok(new TokenApiDTO { AccessToken = newAccessToken, RefreshToken = newRefreshToken });
             }
             catch (Exception ex)
             {
@@ -81,8 +87,13 @@ namespace JobExchangeAPI.Controllers
             try
             {
                 user.Password = PasswordHasher.HashPassword(user.Password);
-                // TODO: token
-                user.Token = "";
+                user.Token = CreateJWT(user);
+                var newAccessToken = user.Token;
+                var newRefreshToken = CreateRefreshToken();
+                user.RefreshToken = newRefreshToken;
+                user.RefreshTokenExpiryTime = DateTime.UtcNow.AddHours(1);
+
+                await _jobExchangeDBContext.SaveChangesAsync();
                 await _jobExchangeDBContext.Users.AddAsync(user);
                 await _jobExchangeDBContext.SaveChangesAsync();
 
@@ -118,18 +129,55 @@ namespace JobExchangeAPI.Controllers
             var identity = new ClaimsIdentity(new Claim[]
             {
                 new Claim(ClaimTypes.Role, user.Role),
-                new Claim(ClaimTypes.Name, $"{user.FirstName} {user.LastName}"),
+                new Claim(ClaimTypes.Name, user.Username),
             });
             var credentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256);
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                  Subject = identity,
-                 Expires = DateTime.UtcNow.AddHours(5),
+                 Expires = DateTime.UtcNow.AddHours(1),
                  SigningCredentials = credentials,
             };
             var token = jwtTokenHandler.CreateToken(tokenDescriptor);
 
             return jwtTokenHandler.WriteToken(token);
+        }
+
+        private string CreateRefreshToken()
+        {
+            var tokenBytes = RandomNumberGenerator.GetBytes(64);
+            var refreshToken = Convert.ToBase64String(tokenBytes);
+            var tokenInUser = _jobExchangeDBContext.Users
+                .Any(x => x.RefreshToken == refreshToken);
+
+            if (tokenInUser)
+            {
+                return CreateRefreshToken();
+            }
+
+            return refreshToken;
+        }
+
+        private ClaimsPrincipal GetPrincipleFromExpiredToken(string token)
+        {
+            var key = Encoding.ASCII.GetBytes(Constants.TokenKey);
+            var tokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateAudience = false,
+                ValidateIssuer = false,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(key),
+                ValidateLifetime = false,
+            };
+            var tokenHandler = new JwtSecurityTokenHandler();
+            SecurityToken securityToken;
+            var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out securityToken);
+            var jwtSecurityToken = securityToken as JwtSecurityToken;
+
+            if (jwtSecurityToken == null || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+                throw new SecurityTokenException("This is invalid token!");
+
+            return principal;
         }
 
         #endregion
@@ -139,6 +187,31 @@ namespace JobExchangeAPI.Controllers
         public async Task<ActionResult<User>> GetAllUsers()
         {
             return Ok(await _jobExchangeDBContext.Users.ToListAsync());
+        }
+
+
+        [HttpPost("refresh")]
+        public async Task<IActionResult> RefreshToken(TokenApiDTO tokenApiDTO)
+        {
+            if (tokenApiDTO is null)
+                return BadRequest("Invalid client request");
+
+            var accessToken = tokenApiDTO.AccessToken;
+            var refreshToken = tokenApiDTO.RefreshToken;
+            var principal = GetPrincipleFromExpiredToken(accessToken);
+            var username = principal.Identity.Name;
+            var user = await _jobExchangeDBContext.Users.FirstOrDefaultAsync(x => x.Username == username);
+
+            if (user is null || user.RefreshToken != refreshToken || user.RefreshTokenExpiryTime <= DateTime.UtcNow)
+                return BadRequest("Invalid request!");
+
+            var newAccessToken = CreateJWT(user);
+            var newRefreshToken = CreateRefreshToken();
+            
+            user.RefreshToken = newRefreshToken;
+            await _jobExchangeDBContext.SaveChangesAsync();
+
+            return Ok(new TokenApiDTO { AccessToken = accessToken, RefreshToken = newRefreshToken });
         }
     }
 }
