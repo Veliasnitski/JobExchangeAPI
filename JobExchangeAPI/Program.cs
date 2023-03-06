@@ -1,6 +1,8 @@
 using Data;
 using Data.Interfaces;
 using Data.Repositories;
+using JobExchangeAPI.Interfaces;
+using JobExchangeAPI.Services;
 using JobExchangeAPI.Utils;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +19,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<JobExchangeDBContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddTransient<IJobExchangeRepository, JobExchangeRepository>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 builder.Services.AddCors(options =>
 {

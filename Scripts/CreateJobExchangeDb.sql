@@ -78,6 +78,8 @@ CREATE TABLE Users
 	Role VARCHAR(50),
 	RefreshToken VARCHAR(500),
 	RefreshTokenExpiryTime Datetime,
+	ResetPasswordToken VARCHAR(500),
+	ResetPasswordExpiryTime Datetime,
 )
 
 INSERT INTO Users(Username, Password, Role, FirstName, LastName, Email) 

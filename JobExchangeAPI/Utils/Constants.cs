@@ -22,4 +22,9 @@
         public const string User = "User";
         public const string Admin = "Admin";
     }
+
+    public class ExpireTime
+    {
+        public const int Token15 = 15;
+    }
 }

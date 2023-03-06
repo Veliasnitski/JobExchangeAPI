@@ -1,6 +1,7 @@
 ﻿using Data;
 using Data.Models;
 using JobExchangeAPI.Helpers;
+using JobExchangeAPI.Interfaces;
 using JobExchangeAPI.Models.DTO;
 using JobExchangeAPI.Models.RequestModels;
 using JobExchangeAPI.Utils;
@@ -9,7 +10,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Data;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -21,10 +24,14 @@ namespace JobExchangeAPI.Controllers
     [ApiController]
     public class UserController : ControllerBase
     {
+        private readonly IConfiguration _config;
+        private readonly IEmailService _emailService;
         private readonly JobExchangeDBContext _jobExchangeDBContext;
-        public UserController(JobExchangeDBContext jobExchangeDBContext)
+        public UserController(JobExchangeDBContext jobExchangeDBContext, IConfiguration config, IEmailService emailService)
         {
             _jobExchangeDBContext = jobExchangeDBContext;
+            _config = config;
+            _emailService = emailService;
         }
 
         [HttpPost("authenticate")]
@@ -69,8 +76,8 @@ namespace JobExchangeAPI.Controllers
             {
                 Username = signUp.Username,
                 Password = signUp.Password,
-                FirstName= signUp.FirstName,
-                LastName= signUp.LastName,
+                FirstName = signUp.FirstName,
+                LastName = signUp.LastName,
                 Role = UserRole.User,
                 Email = signUp.Email,
                 Token = signUp.Token
@@ -134,9 +141,9 @@ namespace JobExchangeAPI.Controllers
             var credentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256);
             var tokenDescriptor = new SecurityTokenDescriptor
             {
-                 Subject = identity,
-                 Expires = DateTime.UtcNow.AddHours(1),
-                 SigningCredentials = credentials,
+                Subject = identity,
+                Expires = DateTime.UtcNow.AddHours(1),
+                SigningCredentials = credentials,
             };
             var token = jwtTokenHandler.CreateToken(tokenDescriptor);
 
@@ -186,7 +193,15 @@ namespace JobExchangeAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<User>> GetAllUsers()
         {
-            return Ok(await _jobExchangeDBContext.Users.ToListAsync());
+            try
+            {
+                var result = await _jobExchangeDBContext.Users.ToListAsync();
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { Message = ex.Message });
+            }
         }
 
 
@@ -207,11 +222,48 @@ namespace JobExchangeAPI.Controllers
 
             var newAccessToken = CreateJWT(user);
             var newRefreshToken = CreateRefreshToken();
-            
+
             user.RefreshToken = newRefreshToken;
             await _jobExchangeDBContext.SaveChangesAsync();
 
             return Ok(new TokenApiDTO { AccessToken = accessToken, RefreshToken = newRefreshToken });
+        }
+
+        [HttpPost("send-reset-email/{email}")]
+        public async Task<IActionResult> SendEmail(string email)
+        {
+            var user = _jobExchangeDBContext.Users.FirstOrDefault(x => x.Email == email);
+            if (user is null)
+                return NotFound(new { StatusCode = HttpStatusCode.NotFound, Message = "Email doesn't exist" });
+
+            var tokenBytes = RandomNumberGenerator.GetBytes(64);
+            var emailToken = Convert.ToBase64String(tokenBytes);
+            user.ResetPasswordToken = emailToken;
+            user.ResetPasswordExpiryTime = DateTime.UtcNow.AddMinutes(ExpireTime.Token15);
+            string from = _config["EmailSettings:From"];
+            var emailBody = new EmailBody(_config);
+            var emailModel = new EmailModel(email, "Reset Pasword!", emailBody.EmailStringBody(email, emailToken));
+            _emailService.SendEmail(emailModel);
+            _jobExchangeDBContext.Entry(User).State = EntityState.Modified;
+            await _jobExchangeDBContext.SaveChangesAsync();
+            return Ok(new { StatusCode = HttpStatusCode.OK, Message = "Email send!" });
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword(ResetPasswordDTO resetPassword)
+        {
+            var newToken = resetPassword.EmailToken.Replace(" ", "+");
+            var user = await _jobExchangeDBContext.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Email == resetPassword.Email);
+            if (user is null)
+                return NotFound(new { StatusCode = HttpStatusCode.NotFound, Message = "User doesn't exist" });
+            var codeToken = user.ResetPasswordToken;
+            var emailTokenExpire = user.ResetPasswordExpiryTime;
+            if (codeToken != resetPassword.EmailToken || emailTokenExpire < DateTime.UtcNow)
+                return BadRequest(new { StatusCode = HttpStatusCode.BadRequest, Message = "Invalid reset link" });
+            user.Password = PasswordHasher.HashPassword(resetPassword.NewPassword);
+            _jobExchangeDBContext.Entry(user).State = EntityState.Modified;
+            await _jobExchangeDBContext.SaveChangesAsync();
+            return Ok(new { StatusCode = HttpStatusCode.OK, Message = "Password reset successfuly" });
         }
     }
 }
